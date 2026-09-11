@@ -36,7 +36,7 @@ public class KafkaConfig {
         DefaultKafkaConsumerFactory<String, PixTransactionResponseMessage> factory =
                 new DefaultKafkaConsumerFactory<>(properties.buildConsumerProperties());
         factory.setKeyDeserializer(new org.apache.kafka.common.serialization.StringDeserializer());
-        factory.setValueDeserializer(new JacksonJsonDeserializer<>(PixTransactionResponseMessage.class));
+        factory.setValueDeserializer(new JacksonJsonDeserializer<>(PixTransactionResponseMessage.class, false));
         return factory;
     }
 
