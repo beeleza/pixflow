@@ -33,3 +33,12 @@ spring:
         spring.json.trusted.packages: com.beeleza.pixflow.adapter.in.kafka
       group-id: pixflow-settlement
       auto-offset-reset: earliest
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+pixflow:
+  transfer-lock:
+    ttl: 10s
