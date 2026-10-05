@@ -14,13 +14,16 @@ public record Money(BigDecimal amount) {
         if (amount == null) {
             throw new InvalidMoneyException("amount must not be null");
         }
-        amount = amount.setScale(2, RoundingMode.HALF_UP);
         if (amount.signum() < 0) {
             throw new InvalidMoneyException("amount must not be negative: " + amount);
         }
+        amount = amount.setScale(2, RoundingMode.HALF_UP);
     }
 
     public static Money of(String amount) {
+        if (amount == null) {
+            throw new InvalidMoneyException("amount must not be null");
+        }
         try {
             return new Money(new BigDecimal(amount));
         } catch (NumberFormatException e) {
