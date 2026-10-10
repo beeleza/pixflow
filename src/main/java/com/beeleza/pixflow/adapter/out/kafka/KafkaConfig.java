@@ -1,6 +1,7 @@
 package com.beeleza.pixflow.adapter.out.kafka;
 
 import com.beeleza.pixflow.adapter.in.kafka.PixTransactionResponseMessage;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.boot.kafka.autoconfigure.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -10,6 +11,7 @@ import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
 import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
 
 @Configuration
@@ -35,8 +37,15 @@ public class KafkaConfig {
     public ConsumerFactory<String, PixTransactionResponseMessage> pixTransactionConsumerFactory() {
         DefaultKafkaConsumerFactory<String, PixTransactionResponseMessage> factory =
                 new DefaultKafkaConsumerFactory<>(properties.buildConsumerProperties());
-        factory.setKeyDeserializer(new org.apache.kafka.common.serialization.StringDeserializer());
-        factory.setValueDeserializer(new JacksonJsonDeserializer<>(PixTransactionResponseMessage.class, false));
+
+        factory.setKeyDeserializer(new StringDeserializer());
+
+        JacksonJsonDeserializer<PixTransactionResponseMessage> jsonDeserializer = new JacksonJsonDeserializer<>(PixTransactionResponseMessage.class, false);
+
+        factory.setValueDeserializer(
+                new ErrorHandlingDeserializer<>(jsonDeserializer)
+        );
+
         return factory;
     }
 
