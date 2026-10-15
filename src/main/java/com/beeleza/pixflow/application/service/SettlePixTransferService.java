@@ -6,6 +6,7 @@ import com.beeleza.pixflow.application.port.out.SavePixTransactionPort;
 import com.beeleza.pixflow.application.service.exception.TransactionNotFoundException;
 import com.beeleza.pixflow.domain.model.IdempotencyKey;
 import com.beeleza.pixflow.domain.model.PixTransaction;
+import com.beeleza.pixflow.domain.model.TransactionStatus;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -28,6 +29,14 @@ public class SettlePixTransferService implements SettlePixTransferUseCase {
                         new TransactionNotFoundException(
                                 "Transaction not found: " + idempotencyKey
                         ));
+
+        TransactionStatus target = command.accepted()
+                ? TransactionStatus.COMPLETED
+                : TransactionStatus.FAILED;
+
+        if (pixTransaction.status() == target) {
+            return pixTransaction;
+        }
 
         if (command.accepted()) {
             pixTransaction.complete();
