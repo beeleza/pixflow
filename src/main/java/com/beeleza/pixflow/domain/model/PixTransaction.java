@@ -14,6 +14,7 @@ public class PixTransaction {
     private final PixKey destinationKey;
     private final Money amount;
     private final Instant createdAt;
+    private final Long version;
 
     private TransactionStatus status;
     private Instant settledAt;
@@ -21,7 +22,7 @@ public class PixTransaction {
 
     private PixTransaction(TransactionId id, IdempotencyKey idempotencyKey, AccountId sourceAccount,
                            PixKey destinationKey, Money amount, Instant createdAt,
-                           TransactionStatus status, Instant settledAt, String failureReason) {
+                           TransactionStatus status, Instant settledAt, String failureReason, Long version) {
         this.id = Objects.requireNonNull(id, "id must not be null");
         this.idempotencyKey = Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
         this.sourceAccount = Objects.requireNonNull(sourceAccount, "sourceAccount must not be null");
@@ -31,6 +32,7 @@ public class PixTransaction {
         this.status = Objects.requireNonNull(status, "status must not be null");
         this.settledAt = settledAt;
         this.failureReason = failureReason;
+        this.version = version;
     }
 
     public static PixTransaction initiate(IdempotencyKey idempotencyKey, AccountId sourceAccount,
@@ -39,18 +41,19 @@ public class PixTransaction {
             throw new InvalidTransactionAmountException("amount must be positive: " + amount.amount());
         }
         return new PixTransaction(TransactionId.generate(), idempotencyKey, sourceAccount,
-                destinationKey, amount, Instant.now(), TransactionStatus.PENDING, null, null);
+                destinationKey, amount, Instant.now(), TransactionStatus.PENDING, null, null, null);
     }
 
     /**
      * Rebuilds a transaction from persisted state, bypassing the initiation rules.
+     * {@code version} is the concurrency token of the stored state, used to detect lost updates.
      */
     public static PixTransaction reconstitute(TransactionId id, IdempotencyKey idempotencyKey,
                                               AccountId sourceAccount, PixKey destinationKey, Money amount,
                                               Instant createdAt, TransactionStatus status,
-                                              Instant settledAt, String failureReason) {
+                                              Instant settledAt, String failureReason, Long version) {
         return new PixTransaction(id, idempotencyKey, sourceAccount, destinationKey, amount,
-                createdAt, status, settledAt, failureReason);
+                createdAt, status, settledAt, failureReason, version);
     }
 
     public void complete() {
@@ -105,6 +108,13 @@ public class PixTransaction {
 
     public String failureReason() {
         return failureReason;
+    }
+
+    /**
+     * Concurrency token of the persisted state; {@code null} while the transaction was never stored.
+     */
+    public Long version() {
+        return version;
     }
 
     @Override

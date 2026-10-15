@@ -40,15 +40,20 @@ public class PixTransactionEntity {
     @Column(name = "settled_at")
     private Instant settledAt;
 
-    @Column(name = "failure_reason")
+    @Column(name = "failure_reason", length = 500)
     private String failureReason;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
 
     protected PixTransactionEntity() {
     }
 
     public PixTransactionEntity(String id, String idempotencyKey, String sourceAccount, String destinationKey,
                                 PixKeyType destinationKeyType, BigDecimal amount, Instant createdAt,
-                                TransactionStatus status, Instant settledAt, String failureReason) {
+                                TransactionStatus status, Instant settledAt, String failureReason,
+                                Long version) {
         this.id = id;
         this.idempotencyKey = idempotencyKey;
         this.sourceAccount = sourceAccount;
@@ -59,6 +64,7 @@ public class PixTransactionEntity {
         this.status = status;
         this.settledAt = settledAt;
         this.failureReason = failureReason;
+        this.version = version;
     }
 
     public String getId() {
@@ -139,5 +145,13 @@ public class PixTransactionEntity {
 
     public void setFailureReason(String failureReason) {
         this.failureReason = failureReason;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 }

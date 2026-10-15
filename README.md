@@ -24,6 +24,9 @@ como `PENDING`, envia para a rede Pix via Kafka e, quando a resposta chega, marc
 - **Redis:** lock por chave de idempotência (`SET NX` + TTL), impedindo processamento duplicado em paralelo.
 - **Kafka:** envio em `pix-transaction` e retorno em `pix-transaction-response`.
 - **PostgreSQL:** fonte da verdade; uma requisição repetida devolve a transação já existente.
+  O schema é versionado com **Flyway** (`src/main/resources/db/migration`).
+- **Optimistic locking:** cada transação tem uma coluna `version` (`@Version`), então duas liquidações
+  concorrentes não sobrescrevem uma à outra; a que perde é reprocessada pelo retry do consumer.
 
 ## Como executar
 
@@ -35,6 +38,26 @@ docker compose up -d
 ```
 
 A API fica disponível em `http://localhost:8080`.
+
+| Serviço  | Endereço                |
+|----------|-------------------------|
+| API      | `http://localhost:8080` |
+| Kafka UI | `http://localhost:8090` |
+| pgAdmin  | `http://localhost:5050` |
+
+### Configuração
+
+Todas as conexões aceitam variáveis de ambiente, com valores padrão para o ambiente local:
+
+| Variável                  | Padrão                                     |
+|---------------------------|--------------------------------------------|
+| `SERVER_PORT`             | `8080`                                     |
+| `DB_URL`                  | `jdbc:postgresql://localhost:5432/pixflow` |
+| `DB_USERNAME`             | `pixflow`                                  |
+| `DB_PASSWORD`             | `pixflow`                                  |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092`                           |
+| `REDIS_HOST`              | `localhost`                                |
+| `REDIS_PORT`              | `6379`                                     |
 
 ## API
 
@@ -53,6 +76,30 @@ A API fica disponível em `http://localhost:8080`.
 `destinationKeyType`: `CPF`, `CNPJ`, `EMAIL`, `PHONE` ou `RANDOM`.
 
 Retorna `201 Created` com a transação em status `PENDING`.
+
+### Erros
+
+Os erros seguem a [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`):
+
+```json
+{
+  "type": "about:blank",
+  "title": "Invalid request",
+  "status": 400,
+  "detail": "One or more fields are invalid",
+  "instance": "/api/v1/pix",
+  "errors": [
+    { "field": "amount", "message": "must be at least 0.01" }
+  ]
+}
+```
+
+| Status | Quando                                                                       |
+|--------|------------------------------------------------------------------------------|
+| `400`  | Campo ausente ou inválido, JSON malformado ou tipo de chave desconhecido     |
+| `409`  | Transferência com a mesma chave de idempotência ainda em processamento       |
+| `422`  | Regra de negócio violada (ex.: chave Pix fora do formato do tipo informado) |
+| `500`  | Erro inesperado                                                              |
 
 ## Testes
 

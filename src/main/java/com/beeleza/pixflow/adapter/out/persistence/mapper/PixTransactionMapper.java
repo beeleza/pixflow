@@ -26,7 +26,8 @@ public class PixTransactionMapper {
                 entity.getCreatedAt(),
                 entity.getStatus(),
                 entity.getSettledAt(),
-                entity.getFailureReason()
+                entity.getFailureReason(),
+                entity.getVersion()
         );
     }
 
@@ -45,7 +46,8 @@ public class PixTransactionMapper {
                 domain.createdAt(),
                 domain.status(),
                 domain.settledAt(),
-                domain.failureReason()
+                domain.failureReason(),
+                domain.version()
         );
     }
 }

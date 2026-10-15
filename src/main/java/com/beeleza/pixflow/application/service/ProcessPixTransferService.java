@@ -54,19 +54,18 @@ public class ProcessPixTransferService implements ProcessPixTransferUseCase {
     }
 
     private PixTransaction settleNewTransfer(IdempotencyKey idempotencyKey, Command command) {
-        PixTransaction transaction = PixTransaction.initiate(
+        // Keep the instance returned by save: it carries the version needed for the next update.
+        PixTransaction transaction = savePixTransaction.save(PixTransaction.initiate(
                 idempotencyKey,
                 new AccountId(command.sourceAccountId()),
                 new PixKey(command.destinationKey(), command.destinationKeyType()),
-                new Money(command.amount()));
-
-        savePixTransaction.save(transaction);
+                new Money(command.amount())));
 
         try {
             pixNetworkGateway.dispatch(transaction);
         } catch (PixNetworkException e) {
             transaction.fail(e.getMessage());
-            savePixTransaction.save(transaction);
+            transaction = savePixTransaction.save(transaction);
         }
 
         return transaction;
