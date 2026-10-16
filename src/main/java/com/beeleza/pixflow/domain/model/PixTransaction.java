@@ -8,6 +8,8 @@ import java.util.Objects;
 
 public class PixTransaction {
 
+    public static final int MAX_FAILURE_REASON_LENGTH = 500;
+
     private final TransactionId id;
     private final IdempotencyKey idempotencyKey;
     private final AccountId sourceAccount;
@@ -62,7 +64,9 @@ public class PixTransaction {
 
     public void fail(String reason) {
         transitionTo(TransactionStatus.FAILED);
-        this.failureReason = reason;
+        this.failureReason = reason == null || reason.length() <= MAX_FAILURE_REASON_LENGTH
+                ? reason
+                : reason.substring(0, MAX_FAILURE_REASON_LENGTH);
     }
 
     private void transitionTo(TransactionStatus target) {

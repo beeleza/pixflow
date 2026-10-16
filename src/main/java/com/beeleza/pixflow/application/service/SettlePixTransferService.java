@@ -3,6 +3,7 @@ package com.beeleza.pixflow.application.service;
 import com.beeleza.pixflow.application.port.in.SettlePixTransferUseCase;
 import com.beeleza.pixflow.application.port.out.LoadPixTransactionPort;
 import com.beeleza.pixflow.application.port.out.SavePixTransactionPort;
+import com.beeleza.pixflow.application.service.exception.TransactionMismatchException;
 import com.beeleza.pixflow.application.service.exception.TransactionNotFoundException;
 import com.beeleza.pixflow.domain.model.IdempotencyKey;
 import com.beeleza.pixflow.domain.model.PixTransaction;
@@ -29,6 +30,13 @@ public class SettlePixTransferService implements SettlePixTransferUseCase {
                         new TransactionNotFoundException(
                                 "Transaction not found: " + idempotencyKey
                         ));
+
+        if (!pixTransaction.id().toString().equals(command.transactionId())) {
+            throw new TransactionMismatchException(
+                    "Response transactionId " + command.transactionId()
+                            + " does not match transaction " + pixTransaction.id()
+                            + " for idempotency key " + idempotencyKey.value());
+        }
 
         TransactionStatus target = command.accepted()
                 ? TransactionStatus.COMPLETED
