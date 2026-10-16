@@ -1,4 +1,28 @@
 services:
+  app:
+    build: .
+    image: pixflow:latest
+    container_name: pixflow_app
+    restart: always
+    ports:
+      - "${SERVER_PORT:-8080}:${SERVER_PORT:-8080}"
+    environment:
+      SERVER_PORT: ${SERVER_PORT:-8080}
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-pixflow}
+      DB_USERNAME: ${DB_USERNAME:-pixflow}
+      DB_PASSWORD: ${DB_PASSWORD:-pixflow}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   postgres:
     image: postgres:16-alpine
     container_name: pixflow_db
@@ -6,11 +30,16 @@ services:
     environment:
       POSTGRES_USER: ${DB_USERNAME:-pixflow}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-pixflow}
-      POSTGRES_DB: pixflow
+      POSTGRES_DB: ${DB_NAME:-pixflow}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -36,6 +65,12 @@ services:
 
     volumes:
       - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server kafka:29092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
 
   redis:
     image: redis:7-alpine
@@ -46,6 +81,11 @@ services:
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   pgadmin:
     image: dpage/pgadmin4:latest
@@ -54,8 +94,8 @@ services:
     ports:
       - "5050:80"
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@pixflow.com
-      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@pixflow.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     depends_on:

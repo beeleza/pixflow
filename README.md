@@ -30,10 +30,17 @@ como `PENDING`, envia para a rede Pix via Kafka e, quando a resposta chega, marc
 
 ## Como executar
 
-Pré-requisitos: Java 21 e Docker.
+Pré-requisito: Docker.
 
 ```bash
-docker compose up -d
+cp .env.example .env
+docker compose up -d --build
+```
+
+Para rodar a aplicação fora do Docker (requer Java 21), suba só a infraestrutura:
+
+```bash
+docker compose up -d postgres kafka redis
 ./mvnw spring-boot:run
 ```
 
@@ -58,6 +65,19 @@ Todas as conexões aceitam variáveis de ambiente, com valores padrão para o am
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092`                           |
 | `REDIS_HOST`              | `localhost`                                |
 | `REDIS_PORT`              | `6379`                                     |
+
+No `docker compose`, as variáveis ficam no `.env` (veja `.env.example`). Os endereços de banco, Kafka e
+Redis do container `app` já apontam para os serviços do compose:
+
+| Variável           | Padrão                                                 |
+|--------------------|--------------------------------------------------------|
+| `SERVER_PORT`      | `8080`                                                 |
+| `DB_NAME`          | `pixflow`                                              |
+| `DB_USERNAME`      | `pixflow`                                              |
+| `DB_PASSWORD`      | `pixflow`                                              |
+| `PGADMIN_EMAIL`    | `admin@pixflow.com`                                    |
+| `PGADMIN_PASSWORD` | `admin`                                                |
+| `JAVA_OPTS`        | `-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError` |
 
 ## API
 
