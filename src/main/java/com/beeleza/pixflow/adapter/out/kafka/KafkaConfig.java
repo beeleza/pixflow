@@ -1,6 +1,7 @@
 package com.beeleza.pixflow.adapter.out.kafka;
 
 import com.beeleza.pixflow.adapter.in.kafka.PixTransactionResponseMessage;
+import com.beeleza.pixflow.application.service.exception.TransactionMismatchException;
 import com.beeleza.pixflow.domain.exception.DomainException;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.common.TopicPartition;
@@ -85,10 +86,12 @@ public class KafkaConfig {
 
     @Bean
     public DefaultErrorHandler errorHandler(KafkaTemplate<String, Object> dltKafkaTemplate) {
+        // Negative partition: let the producer pick it, so the DLT does not need
+        // as many partitions as the source topic.
         var recoverer = new DeadLetterPublishingRecoverer(dltKafkaTemplate,
-                (rec, ex) -> new TopicPartition(rec.topic() + ".DLT", rec.partition()));
+                (rec, ex) -> new TopicPartition(rec.topic() + ".DLT", -1));
         var handler = new DefaultErrorHandler(recoverer, new FixedBackOff(1000L, 3));
-        handler.addNotRetryableExceptions(DomainException.class);
+        handler.addNotRetryableExceptions(DomainException.class, TransactionMismatchException.class);
         return handler;
     }
 
