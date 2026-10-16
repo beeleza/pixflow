@@ -69,6 +69,12 @@ public class PixTransaction {
                 : reason.substring(0, MAX_FAILURE_REASON_LENGTH);
     }
 
+    public boolean isSameRequest(AccountId sourceAccount, PixKey destinationKey, Money amount) {
+        return this.sourceAccount.equals(sourceAccount)
+                && this.destinationKey.equals(destinationKey)
+                && this.amount.equals(amount);
+    }
+
     private void transitionTo(TransactionStatus target) {
         if (!status.canTransitionTo(target)) {
             throw new IllegalTransactionStateException(

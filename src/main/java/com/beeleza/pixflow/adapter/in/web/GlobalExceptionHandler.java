@@ -1,5 +1,6 @@
 package com.beeleza.pixflow.adapter.in.web;
 
+import com.beeleza.pixflow.application.service.exception.IdempotencyKeyReuseException;
 import com.beeleza.pixflow.application.service.exception.PixTransferInProgressException;
 import com.beeleza.pixflow.application.service.exception.TransactionNotFoundException;
 import com.beeleza.pixflow.domain.exception.DomainException;
@@ -60,6 +61,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(PixTransferInProgressException.class)
     public ProblemDetail handleTransferInProgress(PixTransferInProgressException ex) {
         return problem(HttpStatus.CONFLICT, "Transfer in progress", ex.getMessage());
+    }
+
+    @ExceptionHandler(IdempotencyKeyReuseException.class)
+    public ProblemDetail handleIdempotencyKeyReuse(IdempotencyKeyReuseException ex) {
+        return problem(HttpStatus.UNPROCESSABLE_CONTENT, "Idempotency key reused", ex.getMessage());
     }
 
     @ExceptionHandler(TransactionNotFoundException.class)
