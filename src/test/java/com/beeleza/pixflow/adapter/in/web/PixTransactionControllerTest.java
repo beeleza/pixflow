@@ -1,6 +1,7 @@
 package com.beeleza.pixflow.adapter.in.web;
 
 import com.beeleza.pixflow.application.port.in.ProcessPixTransferUseCase;
+import com.beeleza.pixflow.application.service.exception.IdempotencyKeyReuseException;
 import com.beeleza.pixflow.application.service.exception.PixTransferInProgressException;
 import com.beeleza.pixflow.domain.exception.InvalidPixKeyException;
 import com.beeleza.pixflow.domain.model.AccountId;
@@ -93,6 +94,16 @@ class PixTransactionControllerTest {
         mockMvc.perform(post("/api/v1/pix").contentType(MediaType.APPLICATION_JSON).content(VALID_BODY))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.title").value("Business rule violated"));
+    }
+
+    @Test
+    void mapsIdempotencyKeyReuseToUnprocessableContent() throws Exception {
+        given(processPixTransferUseCase.process(any()))
+                .willThrow(new IdempotencyKeyReuseException("Idempotency key was already used for a different transfer"));
+
+        mockMvc.perform(post("/api/v1/pix").contentType(MediaType.APPLICATION_JSON).content(VALID_BODY))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.title").value("Idempotency key reused"));
     }
 
     @Test

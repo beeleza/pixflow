@@ -6,6 +6,7 @@ import com.beeleza.pixflow.application.port.out.PixNetworkException;
 import com.beeleza.pixflow.application.port.out.PixNetworkGateway;
 import com.beeleza.pixflow.application.port.out.SavePixTransactionPort;
 import com.beeleza.pixflow.application.port.out.TransferLockPort;
+import com.beeleza.pixflow.application.service.exception.IdempotencyKeyReuseException;
 import com.beeleza.pixflow.application.service.exception.PixTransferInProgressException;
 import com.beeleza.pixflow.domain.model.AccountId;
 import com.beeleza.pixflow.domain.model.IdempotencyKey;
@@ -37,29 +38,43 @@ public class ProcessPixTransferService implements ProcessPixTransferUseCase {
     @Override
     public PixTransaction process(Command command) {
         IdempotencyKey idempotencyKey = IdempotencyKey.of(command.idempotencyKey());
+        // Built up front so a replay is compared on normalized values (stripped key, 2-decimal amount).
+        AccountId sourceAccount = new AccountId(command.sourceAccountId());
+        PixKey destinationKey = new PixKey(command.destinationKey(), command.destinationKeyType());
+        Money amount = new Money(command.amount());
 
         Optional<String> lockToken = transferLock.acquire(idempotencyKey);
         if (lockToken.isEmpty()) {
             return loadPixTransaction.findByIdempotencyKey(idempotencyKey)
+                    .map(existing -> ensureSameRequest(existing, sourceAccount, destinationKey, amount))
                     .orElseThrow(() -> new PixTransferInProgressException(
                             "Transfer already being processed: " + idempotencyKey.value()));
         }
 
         try {
             return loadPixTransaction.findByIdempotencyKey(idempotencyKey)
-                    .orElseGet(() -> settleNewTransfer(idempotencyKey, command));
+                    .map(existing -> ensureSameRequest(existing, sourceAccount, destinationKey, amount))
+                    .orElseGet(() -> settleNewTransfer(idempotencyKey, sourceAccount, destinationKey, amount));
         } finally {
             transferLock.release(idempotencyKey, lockToken.get());
         }
     }
 
-    private PixTransaction settleNewTransfer(IdempotencyKey idempotencyKey, Command command) {
+    private static PixTransaction ensureSameRequest(PixTransaction existing, AccountId sourceAccount,
+                                                    PixKey destinationKey, Money amount) {
+        if (!existing.isSameRequest(sourceAccount, destinationKey, amount)) {
+            throw new IdempotencyKeyReuseException(
+                    "Idempotency key " + existing.idempotencyKey().value()
+                            + " was already used for a different transfer");
+        }
+        return existing;
+    }
+
+    private PixTransaction settleNewTransfer(IdempotencyKey idempotencyKey, AccountId sourceAccount,
+                                             PixKey destinationKey, Money amount) {
         // Keep the instance returned by save: it carries the version needed for the next update.
         PixTransaction transaction = savePixTransaction.save(PixTransaction.initiate(
-                idempotencyKey,
-                new AccountId(command.sourceAccountId()),
-                new PixKey(command.destinationKey(), command.destinationKeyType()),
-                new Money(command.amount())));
+                idempotencyKey, sourceAccount, destinationKey, amount));
 
         try {
             pixNetworkGateway.dispatch(transaction);
