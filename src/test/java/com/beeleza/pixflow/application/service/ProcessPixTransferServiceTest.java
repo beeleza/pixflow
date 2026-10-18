@@ -2,7 +2,7 @@ package com.beeleza.pixflow.application.service;
 
 import com.beeleza.pixflow.application.port.in.ProcessPixTransferUseCase.Command;
 import com.beeleza.pixflow.application.port.out.LoadPixTransactionPort;
-import com.beeleza.pixflow.application.port.out.PixNetworkGateway;
+import com.beeleza.pixflow.application.port.out.PixTransferEventsPort;
 import com.beeleza.pixflow.application.port.out.SavePixTransactionPort;
 import com.beeleza.pixflow.application.port.out.TransferLockPort;
 import com.beeleza.pixflow.application.service.exception.IdempotencyKeyReuseException;
@@ -12,6 +12,7 @@ import com.beeleza.pixflow.domain.model.Money;
 import com.beeleza.pixflow.domain.model.PixKey;
 import com.beeleza.pixflow.domain.model.PixKeyType;
 import com.beeleza.pixflow.domain.model.PixTransaction;
+import com.beeleza.pixflow.domain.model.TransactionStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -34,9 +35,9 @@ class ProcessPixTransferServiceTest {
 
     private final LoadPixTransactionPort load = mock(LoadPixTransactionPort.class);
     private final SavePixTransactionPort save = mock(SavePixTransactionPort.class);
-    private final PixNetworkGateway gateway = mock(PixNetworkGateway.class);
+    private final PixTransferEventsPort events = mock(PixTransferEventsPort.class);
     private final TransferLockPort lock = mock(TransferLockPort.class);
-    private final ProcessPixTransferService service = new ProcessPixTransferService(load, save, gateway, lock);
+    private final ProcessPixTransferService service = new ProcessPixTransferService(load, save, events, lock);
 
     private PixTransaction existing;
 
@@ -56,8 +57,20 @@ class ProcessPixTransferServiceTest {
         PixTransaction result = service.process(command("fulano@email.com", "150.50"));
 
         assertThat(result).isSameAs(existing);
-        verify(gateway, never()).dispatch(any());
+        verify(events, never()).transferRequested(any());
         verify(save, never()).save(any());
+    }
+
+    @Test
+    void savesNewTransferAsPendingAndRecordsEvent() {
+        given(load.findByIdempotencyKey(IdempotencyKey.of(KEY))).willReturn(Optional.empty());
+        given(save.save(any())).willAnswer(invocation -> invocation.getArgument(0));
+
+        PixTransaction result = service.process(command("fulano@email.com", "150.50"));
+
+        assertThat(result.status()).isEqualTo(TransactionStatus.PENDING);
+        verify(save).save(result);
+        verify(events).transferRequested(result);
     }
 
     @Test
@@ -71,7 +84,7 @@ class ProcessPixTransferServiceTest {
     void rejectsKeyReusedWithDifferentAmount() {
         assertThatThrownBy(() -> service.process(command("fulano@email.com", "999.00")))
                 .isInstanceOf(IdempotencyKeyReuseException.class);
-        verify(gateway, never()).dispatch(any());
+        verify(events, never()).transferRequested(any());
     }
 
     @Test

@@ -2,8 +2,7 @@ package com.beeleza.pixflow.application.service;
 
 import com.beeleza.pixflow.application.port.in.ProcessPixTransferUseCase;
 import com.beeleza.pixflow.application.port.out.LoadPixTransactionPort;
-import com.beeleza.pixflow.application.port.out.PixNetworkException;
-import com.beeleza.pixflow.application.port.out.PixNetworkGateway;
+import com.beeleza.pixflow.application.port.out.PixTransferEventsPort;
 import com.beeleza.pixflow.application.port.out.SavePixTransactionPort;
 import com.beeleza.pixflow.application.port.out.TransferLockPort;
 import com.beeleza.pixflow.application.service.exception.IdempotencyKeyReuseException;
@@ -22,16 +21,16 @@ public class ProcessPixTransferService implements ProcessPixTransferUseCase {
 
     private final LoadPixTransactionPort loadPixTransaction;
     private final SavePixTransactionPort savePixTransaction;
-    private final PixNetworkGateway pixNetworkGateway;
+    private final PixTransferEventsPort pixTransferEvents;
     private final TransferLockPort transferLock;
 
     public ProcessPixTransferService(LoadPixTransactionPort loadPixTransaction,
                                      SavePixTransactionPort savePixTransaction,
-                                     PixNetworkGateway pixNetworkGateway,
+                                     PixTransferEventsPort pixTransferEvents,
                                      TransferLockPort transferLock) {
         this.loadPixTransaction = loadPixTransaction;
         this.savePixTransaction = savePixTransaction;
-        this.pixNetworkGateway = pixNetworkGateway;
+        this.pixTransferEvents = pixTransferEvents;
         this.transferLock = transferLock;
     }
 
@@ -72,16 +71,10 @@ public class ProcessPixTransferService implements ProcessPixTransferUseCase {
 
     private PixTransaction settleNewTransfer(IdempotencyKey idempotencyKey, AccountId sourceAccount,
                                              PixKey destinationKey, Money amount) {
-        // Keep the instance returned by save: it carries the version needed for the next update.
         PixTransaction transaction = savePixTransaction.save(PixTransaction.initiate(
                 idempotencyKey, sourceAccount, destinationKey, amount));
 
-        try {
-            pixNetworkGateway.dispatch(transaction);
-        } catch (PixNetworkException e) {
-            transaction.fail(e.getMessage());
-            transaction = savePixTransaction.save(transaction);
-        }
+        pixTransferEvents.transferRequested(transaction);
 
         return transaction;
     }
