@@ -48,3 +48,7 @@ spring:
 pixflow:
   transfer-lock:
     ttl: 10s
+  outbox:
+    poll-interval: 1s
+    batch-size: 50
+    send-timeout: 5s

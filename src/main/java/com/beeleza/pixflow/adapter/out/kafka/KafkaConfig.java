@@ -37,14 +37,12 @@ public class KafkaConfig {
         this.properties = properties;
     }
 
+    // The outbox stores payloads already serialized as JSON, so they are sent as-is.
     @Bean
-    public ProducerFactory<String, PixTransactionMessage> pixTransactionProducerFactory() {
-        return new DefaultKafkaProducerFactory<>(properties.buildProducerProperties());
-    }
-
-    @Bean
-    public KafkaTemplate<String, PixTransactionMessage> pixTransactionKafkaTemplate() {
-        return new KafkaTemplate<>(pixTransactionProducerFactory());
+    public KafkaTemplate<String, String> outboxKafkaTemplate() {
+        var pf = new DefaultKafkaProducerFactory<String, String>(
+                properties.buildProducerProperties(), new StringSerializer(), new StringSerializer());
+        return new KafkaTemplate<>(pf);
     }
 
     @Bean
