@@ -4,6 +4,7 @@ import com.beeleza.pixflow.application.port.in.ProcessPixTransferUseCase;
 import com.beeleza.pixflow.application.port.out.LoadPixTransactionPort;
 import com.beeleza.pixflow.application.port.out.PixTransferEventsPort;
 import com.beeleza.pixflow.application.port.out.SavePixTransactionPort;
+import com.beeleza.pixflow.application.port.out.TransactionRunner;
 import com.beeleza.pixflow.application.port.out.TransferLockPort;
 import com.beeleza.pixflow.application.service.exception.IdempotencyKeyReuseException;
 import com.beeleza.pixflow.application.service.exception.PixTransferInProgressException;
@@ -23,15 +24,18 @@ public class ProcessPixTransferService implements ProcessPixTransferUseCase {
     private final SavePixTransactionPort savePixTransaction;
     private final PixTransferEventsPort pixTransferEvents;
     private final TransferLockPort transferLock;
+    private final TransactionRunner transactionRunner;
 
     public ProcessPixTransferService(LoadPixTransactionPort loadPixTransaction,
                                      SavePixTransactionPort savePixTransaction,
                                      PixTransferEventsPort pixTransferEvents,
-                                     TransferLockPort transferLock) {
+                                     TransferLockPort transferLock,
+                                     TransactionRunner transactionRunner) {
         this.loadPixTransaction = loadPixTransaction;
         this.savePixTransaction = savePixTransaction;
         this.pixTransferEvents = pixTransferEvents;
         this.transferLock = transferLock;
+        this.transactionRunner = transactionRunner;
     }
 
     @Override
@@ -50,10 +54,11 @@ public class ProcessPixTransferService implements ProcessPixTransferUseCase {
                             "Transfer already being processed: " + idempotencyKey.value()));
         }
 
+        // The transaction commits before the lock is released, so the next lock holder sees this transfer.
         try {
-            return loadPixTransaction.findByIdempotencyKey(idempotencyKey)
+            return transactionRunner.run(() -> loadPixTransaction.findByIdempotencyKey(idempotencyKey)
                     .map(existing -> ensureSameRequest(existing, sourceAccount, destinationKey, amount))
-                    .orElseGet(() -> settleNewTransfer(idempotencyKey, sourceAccount, destinationKey, amount));
+                    .orElseGet(() -> settleNewTransfer(idempotencyKey, sourceAccount, destinationKey, amount)));
         } finally {
             transferLock.release(idempotencyKey, lockToken.get());
         }
