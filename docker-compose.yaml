@@ -23,6 +23,18 @@ services:
       redis:
         condition: service_healthy
 
+  network-simulator:
+    build: ${SIMULATOR_BUILD_CONTEXT:-https://github.com/beeleza/pixflow-network-simulator.git#main}
+    image: pixflow-network-simulator:latest
+    container_name: pixflow_network_simulator
+    restart: always
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError}
+    depends_on:
+      kafka:
+        condition: service_healthy
+
   postgres:
     image: postgres:16-alpine
     container_name: pixflow_db
