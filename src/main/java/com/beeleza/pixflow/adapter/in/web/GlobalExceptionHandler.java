@@ -73,6 +73,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.NOT_FOUND, "Transaction not found", ex.getMessage());
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ProblemDetail handleIllegalArgument(IllegalArgumentException ex) {
+        return problem(HttpStatus.BAD_REQUEST, "Invalid request", ex.getMessage());
+    }
+
     @ExceptionHandler({OptimisticLockingFailureException.class, DataIntegrityViolationException.class})
     public ProblemDetail handleConcurrentModification(RuntimeException ex) {
         log.warn("Concurrent modification detected", ex);
