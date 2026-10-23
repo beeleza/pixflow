@@ -4,6 +4,11 @@ spring:
   application:
     name: pixflow
 
+  task:
+    scheduling:
+      pool:
+        size: 2
+
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/pixflow}
     username: ${DB_USERNAME:pixflow}
@@ -52,3 +57,6 @@ pixflow:
     poll-interval: 1s
     batch-size: 50
     send-timeout: 5s
+    retention: 7d
+    cleanup-batch-size: 1000
+    cleanup-cron: "0 0 * * * *"
