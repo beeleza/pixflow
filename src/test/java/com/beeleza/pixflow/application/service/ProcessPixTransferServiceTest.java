@@ -7,6 +7,9 @@ import com.beeleza.pixflow.application.port.out.SavePixTransactionPort;
 import com.beeleza.pixflow.application.port.out.TransactionRunner;
 import com.beeleza.pixflow.application.port.out.TransferLockPort;
 import com.beeleza.pixflow.application.service.exception.IdempotencyKeyReuseException;
+import com.beeleza.pixflow.application.service.exception.PixTransferInProgressException;
+import com.beeleza.pixflow.domain.exception.InvalidPixKeyException;
+import com.beeleza.pixflow.domain.exception.InvalidTransactionAmountException;
 import com.beeleza.pixflow.domain.model.AccountId;
 import com.beeleza.pixflow.domain.model.IdempotencyKey;
 import com.beeleza.pixflow.domain.model.Money;
@@ -139,6 +142,57 @@ class ProcessPixTransferServiceTest {
 
         verify(save, never()).save(any());
         verify(events, never()).transferRequested(any());
+    }
+
+    @Test
+    void reportsInProgressWhenLockIsHeldAndNothingIsStoredYet() {
+        given(lock.acquire(any())).willReturn(Optional.empty());
+        given(load.findByIdempotencyKey(IdempotencyKey.of(KEY))).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.process(command("fulano@email.com", "150.50")))
+                .isInstanceOf(PixTransferInProgressException.class);
+        verify(transactionRunner, never()).run(any());
+        verify(lock, never()).release(any(), any());
+    }
+
+    @Test
+    void replaysWithoutLockWhenLockIsHeldAndSameRequestIsStored() {
+        given(lock.acquire(any())).willReturn(Optional.empty());
+
+        PixTransaction result = service.process(command("fulano@email.com", "150.50"));
+
+        assertThat(result).isSameAs(existing);
+        verify(transactionRunner, never()).run(any());
+        verify(lock, never()).release(any(), any());
+    }
+
+    @Test
+    void releasesLockWhenSaveFails() {
+        given(load.findByIdempotencyKey(IdempotencyKey.of(KEY))).willReturn(Optional.empty());
+        given(save.save(any())).willThrow(new IllegalStateException("database down"));
+
+        assertThatThrownBy(() -> service.process(command("fulano@email.com", "150.50")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("database down");
+        verify(lock).release(IdempotencyKey.of(KEY), "token");
+        verify(events, never()).transferRequested(any());
+    }
+
+    @Test
+    void rejectsMalformedInputBeforeTakingTheLock() {
+        assertThatThrownBy(() -> service.process(command("not-an-email", "150.50")))
+                .isInstanceOf(InvalidPixKeyException.class);
+        verify(lock, never()).acquire(any());
+    }
+
+    @Test
+    void rejectsZeroAmountForNewTransferAndReleasesLock() {
+        given(load.findByIdempotencyKey(IdempotencyKey.of(KEY))).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.process(command("fulano@email.com", "0.00")))
+                .isInstanceOf(InvalidTransactionAmountException.class);
+        verify(save, never()).save(any());
+        verify(lock).release(IdempotencyKey.of(KEY), "token");
     }
 
     private static Command command(String destinationKey, String amount) {

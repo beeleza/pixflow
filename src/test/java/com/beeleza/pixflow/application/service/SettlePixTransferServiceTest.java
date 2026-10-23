@@ -4,6 +4,9 @@ import com.beeleza.pixflow.application.port.in.SettlePixTransferUseCase.Command;
 import com.beeleza.pixflow.application.port.out.LoadPixTransactionPort;
 import com.beeleza.pixflow.application.port.out.SavePixTransactionPort;
 import com.beeleza.pixflow.application.service.exception.TransactionMismatchException;
+import com.beeleza.pixflow.application.service.exception.TransactionNotFoundException;
+import com.beeleza.pixflow.domain.exception.IllegalTransactionStateException;
+import com.beeleza.pixflow.domain.exception.InvalidIdempotencyKeyException;
 import com.beeleza.pixflow.domain.model.AccountId;
 import com.beeleza.pixflow.domain.model.IdempotencyKey;
 import com.beeleza.pixflow.domain.model.Money;
@@ -71,5 +74,52 @@ class SettlePixTransferServiceTest {
 
         assertThat(settled.status()).isEqualTo(TransactionStatus.FAILED);
         assertThat(settled.failureReason()).hasSize(PixTransaction.MAX_FAILURE_REASON_LENGTH);
+    }
+
+    @Test
+    void failsTransactionWithReasonWhenRejected() {
+        PixTransaction settled = service.settle(
+                new Command(KEY, transaction.id().toString(), false, "INVALID_DESTINATION_KEY"));
+
+        assertThat(settled.status()).isEqualTo(TransactionStatus.FAILED);
+        assertThat(settled.failureReason()).isEqualTo("INVALID_DESTINATION_KEY");
+        assertThat(settled.settledAt()).isNotNull();
+        verify(save).save(transaction);
+    }
+
+    @Test
+    void rejectsResponseForUnknownTransaction() {
+        given(load.findByIdempotencyKey(IdempotencyKey.of(KEY))).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.settle(new Command(KEY, transaction.id().toString(), true, null)))
+                .isInstanceOf(TransactionNotFoundException.class);
+        verify(save, never()).save(any());
+    }
+
+    @Test
+    void ignoresDuplicateResponseWithSameOutcome() {
+        transaction.complete();
+
+        PixTransaction settled = service.settle(new Command(KEY, transaction.id().toString(), true, null));
+
+        assertThat(settled).isSameAs(transaction);
+        verify(save, never()).save(any());
+    }
+
+    @Test
+    void refusesResponseThatContradictsSettledOutcome() {
+        transaction.fail("INVALID_AMOUNT");
+
+        assertThatThrownBy(() -> service.settle(new Command(KEY, transaction.id().toString(), true, null)))
+                .isInstanceOf(IllegalTransactionStateException.class);
+        assertThat(transaction.status()).isEqualTo(TransactionStatus.FAILED);
+        verify(save, never()).save(any());
+    }
+
+    @Test
+    void rejectsResponseWithoutIdempotencyKey() {
+        assertThatThrownBy(() -> service.settle(new Command(" ", transaction.id().toString(), true, null)))
+                .isInstanceOf(InvalidIdempotencyKeyException.class);
+        verify(load, never()).findByIdempotencyKey(any());
     }
 }
