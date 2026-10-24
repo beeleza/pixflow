@@ -57,6 +57,9 @@ pixflow:
     poll-interval: 1s
     batch-size: 50
     send-timeout: 5s
+    max-attempts: 10
+    initial-backoff: 1s
+    max-backoff: 5m
     retention: 7d
     cleanup-batch-size: 1000
     cleanup-cron: "0 0 * * * *"

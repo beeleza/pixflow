@@ -4,6 +4,7 @@ import com.beeleza.pixflow.adapter.out.outbox.OutboxCleanup;
 import com.beeleza.pixflow.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -16,6 +17,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OutboxEventRepositoryIT extends AbstractIntegrationTest {
 
@@ -38,10 +40,50 @@ class OutboxEventRepositoryIT extends AbstractIntegrationTest {
         OutboxEventEntity first = save(pending(NOW.minusSeconds(50)));
         save(pending(NOW.minusSeconds(10)));
 
-        List<String> locked = transaction().execute(status ->
-                outboxEventRepository.lockNextPendingBatch(2).stream().map(OutboxEventEntity::getId).toList());
+        List<String> locked = lockDueNow(2);
 
         assertThat(locked).containsExactly(first.getId(), second.getId());
+    }
+
+    // A failing event waits for its retry without holding back the events behind it.
+    @Test
+    void skipsEventsWaitingForTheirNextAttempt() {
+        OutboxEventEntity backingOff = pending(NOW.minusSeconds(60));
+        backingOff.setAttempts(3);
+        backingOff.setNextAttemptAt(Instant.now().plusSeconds(60));
+        save(backingOff);
+        OutboxEventEntity due = save(pending(NOW.minusSeconds(10)));
+
+        assertThat(lockDueNow(10)).containsExactly(due.getId());
+    }
+
+    @Test
+    void picksEventsUpAgainOnceTheirRetryIsDue() {
+        OutboxEventEntity retried = pending(NOW.minusSeconds(60));
+        retried.setAttempts(1);
+        retried.setNextAttemptAt(NOW.minusSeconds(1));
+        save(retried);
+
+        assertThat(lockDueNow(10)).containsExactly(retried.getId());
+    }
+
+    @Test
+    void neverPicksAbandonedEvents() {
+        OutboxEventEntity abandoned = pending(NOW.minusSeconds(60));
+        abandoned.setAttempts(10);
+        abandoned.setFailedAt(NOW.minusSeconds(30));
+        save(abandoned);
+
+        assertThat(lockDueNow(10)).isEmpty();
+    }
+
+    @Test
+    void rejectsEventThatIsBothPublishedAndAbandoned() {
+        OutboxEventEntity contradictory = published(NOW.minusSeconds(60), NOW.minusSeconds(30));
+        contradictory.setFailedAt(NOW.minusSeconds(30));
+
+        assertThatThrownBy(() -> outboxEventRepository.saveAndFlush(contradictory))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     // Two relays running at the same time must split the pending events instead of sending them twice.
@@ -55,14 +97,14 @@ class OutboxEventRepositoryIT extends AbstractIntegrationTest {
 
         CompletableFuture<List<String>> firstRelay = CompletableFuture.supplyAsync(() ->
                 transaction().execute(status -> {
-                    List<String> ids = ids(outboxEventRepository.lockNextPendingBatch(2));
+                    List<String> ids = ids(outboxEventRepository.lockNextPendingBatch(Instant.now(), 2));
                     firstLocked.countDown();
                     await(secondDone);
                     return ids;
                 }));
         assertThat(firstLocked.await(10, TimeUnit.SECONDS)).isTrue();
 
-        List<String> secondRelay = transaction().execute(status -> ids(outboxEventRepository.lockNextPendingBatch(10)));
+        List<String> secondRelay = lockDueNow(10);
         secondDone.countDown();
 
         assertThat(firstRelay.get(10, TimeUnit.SECONDS)).containsExactly(a.getId(), b.getId());
@@ -75,6 +117,9 @@ class OutboxEventRepositoryIT extends AbstractIntegrationTest {
         OutboxEventEntity expired = save(published(NOW.minus(Duration.ofDays(9)), NOW.minus(Duration.ofDays(8))));
         OutboxEventEntity recent = save(published(NOW.minus(Duration.ofDays(2)), NOW.minus(Duration.ofDays(1))));
         OutboxEventEntity oldButPending = save(pending(NOW.minus(Duration.ofDays(30))));
+        OutboxEventEntity oldAbandoned = pending(NOW.minus(Duration.ofDays(30)));
+        oldAbandoned.setFailedAt(NOW.minus(Duration.ofDays(29)));
+        save(oldAbandoned);
 
         Integer deleted = transaction().execute(status -> outboxEventRepository.deletePublishedBefore(cutoff, 100));
 
@@ -82,6 +127,7 @@ class OutboxEventRepositoryIT extends AbstractIntegrationTest {
         assertThat(outboxEventRepository.findById(expired.getId())).isEmpty();
         assertThat(outboxEventRepository.findById(recent.getId())).isPresent();
         assertThat(outboxEventRepository.findById(oldButPending.getId())).isPresent();
+        assertThat(outboxEventRepository.findById(oldAbandoned.getId())).isPresent();
     }
 
     @Test
@@ -114,6 +160,10 @@ class OutboxEventRepositoryIT extends AbstractIntegrationTest {
 
     private OutboxEventEntity save(OutboxEventEntity event) {
         return outboxEventRepository.save(event);
+    }
+
+    private List<String> lockDueNow(int limit) {
+        return transaction().execute(status -> ids(outboxEventRepository.lockNextPendingBatch(Instant.now(), limit)));
     }
 
     private static OutboxEventEntity pending(Instant createdAt) {

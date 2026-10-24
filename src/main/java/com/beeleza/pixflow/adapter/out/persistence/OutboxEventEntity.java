@@ -35,6 +35,12 @@ public class OutboxEventEntity {
     @Column(name = "last_error", columnDefinition = "TEXT")
     private String lastError;
 
+    @Column(name = "next_attempt_at", nullable = false)
+    private Instant nextAttemptAt;
+
+    @Column(name = "failed_at")
+    private Instant failedAt;
+
     protected OutboxEventEntity() {
     }
 
@@ -47,6 +53,7 @@ public class OutboxEventEntity {
         this.payload = payload;
         this.createdAt = createdAt;
         this.attempts = 0;
+        this.nextAttemptAt = createdAt;
     }
 
     public String getId() {
@@ -95,5 +102,21 @@ public class OutboxEventEntity {
 
     public void setLastError(String lastError) {
         this.lastError = lastError;
+    }
+
+    public Instant getNextAttemptAt() {
+        return nextAttemptAt;
+    }
+
+    public void setNextAttemptAt(Instant nextAttemptAt) {
+        this.nextAttemptAt = nextAttemptAt;
+    }
+
+    public Instant getFailedAt() {
+        return failedAt;
+    }
+
+    public void setFailedAt(Instant failedAt) {
+        this.failedAt = failedAt;
     }
 }
